@@ -1,0 +1,19 @@
+
+
+
+
+Decisione:
+ad ogni tic ci sono i seguenti DRIVERS
+
+	- ORDERS (dati dal giocatore)... eg: vai al punto (x,y), lavora il ferro, costruisci questo
+	- NEEDS (fame, sete, sonno, divertimento) eg: cerca risorse (cibo, acqua, letto)
+	- JOB (raccoglitore, coltivatore ecc.ecc.) eg: lavora
+
+	- BEHAVIOURS ()
+
+ad ogni tic, in funzione dei DRIVERS, l'entità deve 
+
+
+
+	
+	
