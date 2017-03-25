@@ -1,0 +1,25 @@
+{
+  "name": "bnw",
+  "version": "1.0.0",
+  "description": "",
+  "main": "_index.js",
+  "dependencies": {
+    "http-server": "0.9.0",
+    "lodash": "4.17.4"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gurbano/bnw.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/gurbano/bnw/issues"
+  },
+  "homepage": "https://github.com/gurbano/bnw#readme"
+}
