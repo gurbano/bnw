@@ -53,6 +53,7 @@ var VoronoiDemo = {
 			rn, dist;
 		var p = 1 / iCell * 0.1;
 		while (iCell--) {
+
 			cell = cells[iCell];
 			rn = Math.random();
 			// probability of apoptosis
@@ -76,7 +77,11 @@ var VoronoiDemo = {
 					});
 				}
 			sites.push(site);
-			}
+
+
+
+			
+		}
 		this.compute(sites);
 		if (again) {
 			var me = this;
