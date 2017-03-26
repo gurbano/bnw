@@ -7,9 +7,10 @@
 
 module.exports = function () {
     return {
-        index: null,
-      
+        id:null,
+        index: null,      
         point: null,  // location
+        tipo:'corner',
         ocean: null,  // ocean
         water: null,  // lake or ocean
         coast: null,  // touches ocean and land polygons
@@ -17,9 +18,9 @@ module.exports = function () {
         elevation: null,  // 0.0-1.0
         moisture: null,  // 0.0-1.0
 
-        touches: null,
-        protrudes: null,
-        adjacent: null,
+        zones: [], //zone adiacenti
+        edges: [], //edges adiacenti
+        corners: [], //corners adiacenti
       
         river: null,  // 0 if no river, or volume of water in river
         downslope: null,  // pointer to adjacent corner most downhill

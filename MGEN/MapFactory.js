@@ -58,20 +58,23 @@ MapFactory.prototype.generatePoints = function() {
 		this.data.sites.push({x:Math.round((xo+Math.random()*dx)*10)/10,y:Math.round((yo+Math.random()*dy)*10)/10});
 	}
 	console.info('punti inizializzati')
-	this.updateMap();
+	this.voronoiPass();
 };
 MapFactory.prototype.assignWater = function(){
+	var self = this;
 	var pValue = VU.makePerlin(this.getOpts().width, this.getOpts().height);
 	var inside = function (p) {
         return pValue({ x: 2 * (p.x / this.getOpts().width - 0.5), y: 2 * (p.y / this.getOpts().height - 0.5) });
     };
-    this.map.cells.map(function(cell){
-    	//
-    	var val = pValue({x: cell.site.x,y: cell.site.y});
-    	//console.log(cell.site.voronoiId, cell.site.x,cell.site.y, val);
-    	//console.log(val)
-    	cell.water = val;
-    })
+    Object.keys(this.map.graph.zonesMap).map(function(key){
+		var zone = self.map.graph.zonesMap[key];
+		if (zone.border){
+			zone.water = true;
+		}else{
+			zone.water = pValue({x: zone.point.x,y: zone.point.y}) //perlin + radius;	
+		}		
+		//console.log(zone.point.x,zone.point.y,zone.water);
+	});
 
 
 }
@@ -80,10 +83,10 @@ MapFactory.prototype.voronoiPass = function() {
 	this.voronoi.recycle(this.data.diagram);
 	this.data.diagram = this.voronoi.compute(this.data.sites, this.getBBox());
 	console.log('voronoiPass' ,this.data.diagram.execTime + ' ms');
-	this.updateGraph();
 	this.updateMap();
-	this.assignWater();
-	this.updateZones();
+	this.updateGraph(); //build this.map.graph zonesMap
+	this.assignWater(); //
+	//this.printZones();
 };
 MapFactory.prototype.relaxPass = function(again) {
 	if (!this.data.diagram) {this.voronoiPass();}
@@ -136,29 +139,42 @@ MapFactory.prototype.updateGraph = function(){
 	//console.log(this.data.diagram)
 }
 
-var Zone = require('./struct/center.js');
-var Corner = require('./struct/corner.js');
-var Edge = require('./struct/edge.js');
-MapFactory.prototype.updateZones = function() {
+MapFactory.prototype.printZones = function() {
+
 	var zones = {};
-	var self = this;
-	this.map.cells.map(function(cell){
-		console.log(cell)
-		var zone = new Zone();
-		zone.index = cell.site.voronoiId;
-		zone.point = {x:cell.site.x, y:cell.site.y};
-		zone.water = cell.water;
-		zones[cell.site.voronoiId] = zone;
+	var self = this;	
+	Object.keys(this.map.graph.zonesMap).map(function(key){
+		var zone = self.map.graph.zonesMap[key];
+		console.groupCollapsed('analisi zona '+ zone.id);
+		console.table(zone)
+		//analisi vicini
+		console.groupCollapsed('neighbours of '+ zone.id);
+		console.log(zone.id, 'neighbours ->',zone.neighbours.map(function(a){return a.id;}))
+		console.groupEnd();
+		//analisi borders
+		console.groupCollapsed('borders of '+ zone.id);
+		console.log(zone.borders.length, 'borders ->',zone.borders.map(function(a){return a.id;}))
+		zone.neighbours.map(function(neigh){
+			console.log('between',zone.id,'e', neigh.id,'--->', self.map.graph.commonBorder(zone.id, neigh.id))
+		})
+		console.groupEnd();	
+
+		//analisi corners
+
+		console.groupEnd();		
 	});
-	Object.keys(zones).map(function(key){
+	
+/*	Object.keys(zones).map(function(key){
 		var zone = zones[key];
 		var tmp = self.map.graph.zoneGraph.vertices.filter(function(v){return v.data.id == key;})
 		var _in = tmp[0]._in.map(function(edge){return edge.from.data.id;})
 		var _out = tmp[0]._out.map(function(edge){return edge.to.data.id;})
 		console.log('zone',key, 'in',_in,'_out',_out)
+		zone.neighbours = _in;
 	});
+*/
 
-	this.map.zones = zones;
+	//this.map.zones = zones;
 };
 
 MapFactory.prototype.updateMap = function() {
@@ -173,7 +189,6 @@ MapFactory.prototype.updateMap = function() {
 		this.map.edges = [];
 		this.map.cells = [];
 	}
-	return this.map;
 };
 
 MapFactory.prototype.getMap = function() {

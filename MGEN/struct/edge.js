@@ -7,7 +7,9 @@
 
 module.exports = function () {
     return {
-        index: 0,
+        tipo: 'edge',
+        id:null,
+        index: null,
         d0: null,  // Delaunay edge
         d1: null,  // Delaunay edge
         v0: null,  // Voronoi edge

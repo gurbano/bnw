@@ -3,8 +3,9 @@ var CanvasRenderer = require('./renderers/CanvasRenderer')
 var raf = require('raf');
 var WIDTH = 800,
 	HEIGHT = 600,
-	ZONES = 10
-	;
+	ZONES = 60
+;
+	
 var App = function App() {
 	var self = this;
 	this.R = new CanvasRenderer({canvas: 'voronoiCanvas', width: WIDTH, height: HEIGHT});

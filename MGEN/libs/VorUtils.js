@@ -40,70 +40,156 @@ var cellCentroid= function(cell) {
 }
 
 // Build graph data structure in 'edges', 'centers', 'corners',
-// based on information in the Voronoi results: point.neighbors
+// based on information in the Voronoi results: point.neighbours
 // will be a list of neighboring points of the same type (corner
 // or center); point.edges will be a list of edges that include
 // that point. Each edge connects to four points: the Voronoi edge
 // edge.{v0,v1} and its dual Delaunay triangle edge edge.{d0,d1}.
 // For boundary polygons, the Delaunay edge will have one null
 // point, and the Voronoi edge may be null.
+var Zone = require('../struct/center');
+var Edge = require('../struct/edge');
+var Corner = require('../struct/corner');
 var buildGraph = function (diagram) {
-	var zones = diagram.cells.map(function (cell) {return cell.site;});
-	var zonesMap = zones.reduce(function(acc, elem){acc[elem.voronoiId] = {id: elem.voronoiId,x: elem.x,y:elem.y}; return acc},{})
-	var zonesVertexMap = {};
-	var borderMap = {};
-	var borderVertexMap = {};
-	var edges = diagram.edges;
-	var vertex = diagram.vertices;
-
-	//Polygon (zones) GRAPH (nodes- zone center, edge- zones adjiacent)
-	var zoneGraph = new jKstra.Graph();
-	diagram.cells.map(function (cell) {
-		//zoneGraph.addVertex(zonesMap)
-		zonesVertexMap[cell.site.voronoiId] = zoneGraph.addVertex(zonesMap[cell.site.voronoiId],{id: cell.site.voronoiId })
-	})	
-	diagram.edges.map(function (edge) {
-		//console.log(edge)
-		if (edge.lSite && edge.rSite){
-			zoneGraph.addEdge(zonesVertexMap[edge.lSite.voronoiId],zonesVertexMap[edge.rSite.voronoiId],{id: edge.lSite.voronoiId+'-'+edge.rSite.voronoiId });
-			zoneGraph.addEdge(zonesVertexMap[edge.rSite.voronoiId],zonesVertexMap[edge.lSite.voronoiId],{id: edge.rSite.voronoiId+'-'+edge.lSite.voronoiId });
-		}
-	})
-
-	//Borders (between zones) VORONOI GRAPH (nodes- zone center, edge- zones adjiacent)
-	var borderGraph = new jKstra.Graph();
-	diagram.edges.map(function (edge) {
-		//console.log(edge)
-		if (edge.lSite && edge.rSite){
-			var createVertex = function(lSite, rSite){
-				var borderId = 'b'+lSite.voronoiId+'-'+rSite.voronoiId;
-				var vId0 = borderId+'-v0';
-				var vId1 = borderId+'-v1';
-				var v0 = {id:vId0, x:edge.va.x, y:edge.va.y}
-				var v1 = {id:vId1, x:edge.vb.x, y:edge.vb.y}
-
-				var border = {id: borderId, between:[lSite.voronoiId,rSite.voronoiId], vertices:[v0,v1]}				
-				borderMap[borderId] = border;
-				borderVertexMap[vId0] = borderGraph.addVertex(v0,v0);
-				borderVertexMap[vId1] = borderGraph.addVertex(v1,v1);
-				borderGraph.addEdge(borderVertexMap[vId0],borderVertexMap[vId1],{border:border});				
-			}
-			createVertex(edge.lSite, edge.rSite);		
-		}
-	})
+	var vCells = diagram.cells.map(function (cell) {return cell.site;});
+	var vEdges = diagram.edges;
+	var vCorners = diagram.vertices;
+	var edgesMap = {};
+	var cornersMap = {};
+	var zonesMap = vCells.reduce(function(acc, elem){
+						let zone = new Zone();
+						zone.id = elem.voronoiId;
+						zone.index = elem.voronoiId;
+						zone.point = {x: elem.x, y: elem.y};
+						zone.neighbours = []; //[zones]
+						zone.borders = []; //[edges]
+						zone.corners = [];//[corners]
+						acc[elem.voronoiId] = zone;
+						return acc},{})	
 	
-
-	//console.log(zoneGraph);
-	return{
-		zones: zones,
-		zonesMap: zonesMap, //{id: {x:.., y:..,}}
-		zonesVertexMap: zonesVertexMap,
-		zoneGraph: zoneGraph,
-
-		borderMap:borderMap,
-		borderVertexMap: borderVertexMap,
-		borderGraph: borderGraph,
+	
+	vCells.map(function (vCell) {
+		//console.log(vCell, zonesMap[vCell.voronoiId])		
+	})
+	var buildCorner = function(v){
+		let c = new Corner();
+		let vid = (v.x).toFixed(2)+'-'+(v.y).toFixed(2);
+		c.id= vid;
+        c.index= vid,      
+        c.point= {x:v.x, y:v.y};  // location 
+        return c;
 	}
+	vEdges.map(function (vEdge) {
+		if (vEdge.lSite && vEdge.rSite){
+			var z0 = zonesMap[vEdge.lSite.voronoiId];
+			var z1 = zonesMap[vEdge.rSite.voronoiId];
+			
+			var c0 = buildCorner(vEdge.va);
+			var c1 = buildCorner(vEdge.vb);	
+			if (!cornersMap[z0.id]){ cornersMap[z0.id] = [];}
+			cornersMap[z0.id][z1.id] = [c0,c1];
+
+			var eId = 'e'+z0.id+'-'+z1.id;			
+			if (!edgesMap[z0.id]){ edgesMap[z0.id] = {};}			
+			var edge = new Edge();
+			edge.index = eId;
+			edge.id = eId;
+	        edge.d0= z0;  // Delaunay edge
+	        edge.d1= z1;  // Delaunay edge
+	        edge.v0= c0;  // Voronoi edge
+	        edge.v1= c1;  // Voronoi edge
+	        edge.midpoint= {x: ((c0.point.x + c1.point.x)/2),y: ((c0.point.y + c1.point.y)/2)};  // halfway between v0,v1
+	        edge.river= 0;  // volume of water, or 0			
+	        edgesMap[z0.id][z1.id] = edge;
+
+			z0.neighbours.push(z1);
+			z0.corners.push(c0);
+			z0.corners.push(c1);
+			z0.borders.push(edgesMap[z0.id][z1.id]);
+			
+			z1.neighbours.push(z0);
+			z1.corners.push(c0);
+			z1.corners.push(c1);
+			z1.borders.push(edgesMap[z0.id][z1.id]);
+
+			c0.zones.push(z0);
+			c0.zones.push(z1);
+			c0.edges.push(edgesMap[z0.id][z1.id]);
+			c0.corners.push(c1);
+
+			c1.zones.push(z0);			
+			c1.zones.push(z1);
+			c1.edges.push(edgesMap[z0.id][z1.id]);
+			c1.corners.push(c0 );
+			z0.border = false;
+			z1.border = false;
+			//console.log(edgesMap[eId],'edge tra',z0, 'e', z1, c0,c1);
+		}else{
+			//mi segno che la zona è a bordomappa
+			var z = vEdge.lSite ? zonesMap[vEdge.lSite.voronoiId] : zonesMap[vEdge.rSite.voronoiId];
+			var c0 = buildCorner(vEdge.va);
+			var c1 = buildCorner(vEdge.vb);	
+			if (!cornersMap[z.id]){ cornersMap[z.id] = [];}
+			cornersMap[z.id]['outside'] = [c0,c1];
+
+			var eId = 'e'+z.id+'-'+'out';			
+			if (!edgesMap[z.id]){ edgesMap[z.id] = {};}			
+			var edge = new Edge();
+			edge.index = eId;
+			edge.id = eId;
+	        edge.d0= z;  // Delaunay edge
+	        edge.d1= null;  // Delaunay edge
+	        edge.v0= c0;  // Voronoi edge
+	        edge.v1= c1;  // Voronoi edge
+	        edge.midpoint= {x: ((c0.point.x + c1.point.x)/2),y: ((c0.point.y + c1.point.y)/2)};  // halfway between v0,v1
+	        edge.river= 0;  // volume of water, or 0			
+	        edgesMap[z.id]['outside'] = edge;
+
+			z.corners.push(c0);
+			z.corners.push(c1);
+			z.borders.push(edgesMap[z.id]['outside']);
+			
+			c0.zones.push(z);
+			c0.edges.push(edgesMap[z.id]['outside']);
+			c0.corners.push(c1);
+
+			c1.zones.push(z);			
+			c1.edges.push(edgesMap[z.id]['outside']);
+			c1.corners.push(c0 );
+			z.border = true;
+		}
+	})
+
+	var graphZ = new jKstra.Graph();
+	Object.keys(zonesMap).map(function(key){
+		var zone = zonesMap[key];
+		zone.gZvertex = graphZ.addVertex(zone.id,zone);
+		zone.gZedges = [];
+	});
+	Object.keys(zonesMap).map(function(key){
+		var zone = zonesMap[key];
+		zone.neighbours.map(function(neigh){
+			var commonBorder = (edgesMap[zone.id]||{})[neigh.id]||(edgesMap[neigh.id]||{})[zone.id];
+			/*GRAPH ZONES - edges*/
+			var gEdge0 = graphZ.addEdge(zone.gZvertex, neigh.gZvertex,commonBorder);
+			var gEdge1 = graphZ.addEdge(neigh.gZvertex, zone.gZvertex,commonBorder);
+			zone.gZedges.push(gEdge0);
+			zone.gZedges.push(gEdge1);
+			//neigh.gZedges.push(gEdge0);
+			//neigh.gZedges.push(gEdge1);
+		})
+		
+	});
+
+
+	var ret = {
+		zonesMap: zonesMap,
+		edgesMap: edgesMap,
+		cornersMap: cornersMap,
+		GZ: graphZ,
+		commonBorder: function(z1,z2){return (edgesMap[z1]||{})[z2]||(edgesMap[z2]||{})[z1];}
+	};
+	return ret;
 };
 var  toInt = function (something) {
     return something | 0;
@@ -111,10 +197,23 @@ var  toInt = function (something) {
 
 var Noise = require('noisejs').Noise;
 var noise = new Noise(Math.random());
+var distanceFromCenter= function (p,w,h) {
+		var c = {x: w/2, y: h/2};
+        return Math.sqrt(((c.x-p.x) * (c.x-p.x)) + ((c.y-p.y) * (c.y-p.y)));
+    };
+var map = function (val, interval_dest, interval_source) {
+	return (val - interval_source[0])*(interval_dest[1]-interval_dest[0])/(interval_source[1]-interval_source[0]) + interval_dest[0];
+}
 var makePerlin = function(W,H){	
+
     return function (q) {
     	//console.log(noise.perlin2(q.x / 100, q.y / 100))
-    	return noise.perlin2(q.x , q.y )>0 ;
+    	var min_distance = 0;
+    	var max_distance = distanceFromCenter({x:0,y:0},W,H);
+    	var this_distance = distanceFromCenter(q,W,H);
+    	var water_prob = map(this_distance,[-1,1],[min_distance,max_distance]);
+    	var perlin = noise.perlin2(q.x , q.y );
+    	return perlin + (water_prob/2) >0 ;
     };
 }
 

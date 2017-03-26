@@ -3,18 +3,19 @@
 module.exports = function () {
     return {
         index: null,
-      
+        id: null,
+        tipo:'zona',
         point: null,        // Point location
-        water: null,        // lake or ocean
-        ocean: null,        // ocean
-        coast: null,        // land polygon touching an ocean
-        border: null,       // at the edge of the map
+        water: false,        // lake or ocean
+        ocean: false,        // ocean
+        coast: false,        // land polygon touching an ocean
+        border: false,       // at the edge of the map
         biome: null,          // biome type (see article)
         elevation: null,     // 0.0-1.0
         moisture: null,      // 0.0-1.0
 
-        neighbors: null,    // Vector<Center>
-        borders: null,      // Vector<Edge>
-        corners: null       // Vector<Corner>
+        neighbors: [],    // Vector<Center>
+        borders: [],      // Vector<Edge>
+        corners: [],       // Vector<Corner>
     };
 };

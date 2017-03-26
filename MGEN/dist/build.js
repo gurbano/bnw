@@ -241,20 +241,23 @@ MapFactory.prototype.generatePoints = function() {
 		this.data.sites.push({x:Math.round((xo+Math.random()*dx)*10)/10,y:Math.round((yo+Math.random()*dy)*10)/10});
 	}
 	console.info('punti inizializzati')
-	this.updateMap();
+	this.voronoiPass();
 };
 MapFactory.prototype.assignWater = function(){
+	var self = this;
 	var pValue = VU.makePerlin(this.getOpts().width, this.getOpts().height);
 	var inside = function (p) {
         return pValue({ x: 2 * (p.x / this.getOpts().width - 0.5), y: 2 * (p.y / this.getOpts().height - 0.5) });
     };
-    this.map.cells.map(function(cell){
-    	//
-    	var val = pValue({x: cell.site.x,y: cell.site.y});
-    	//console.log(cell.site.voronoiId, cell.site.x,cell.site.y, val);
-    	//console.log(val)
-    	cell.water = val;
-    })
+    Object.keys(this.map.graph.zonesMap).map(function(key){
+		var zone = self.map.graph.zonesMap[key];
+		if (zone.border){
+			zone.water = true;
+		}else{
+			zone.water = pValue({x: zone.point.x,y: zone.point.y}) //perlin + radius;	
+		}		
+		//console.log(zone.point.x,zone.point.y,zone.water);
+	});
 
 
 }
@@ -263,10 +266,10 @@ MapFactory.prototype.voronoiPass = function() {
 	this.voronoi.recycle(this.data.diagram);
 	this.data.diagram = this.voronoi.compute(this.data.sites, this.getBBox());
 	console.log('voronoiPass' ,this.data.diagram.execTime + ' ms');
-	this.updateGraph();
 	this.updateMap();
-	this.assignWater();
-	this.updateZones();
+	this.updateGraph(); //build this.map.graph zonesMap
+	this.assignWater(); //
+	//this.printZones();
 };
 MapFactory.prototype.relaxPass = function(again) {
 	if (!this.data.diagram) {this.voronoiPass();}
@@ -319,29 +322,42 @@ MapFactory.prototype.updateGraph = function(){
 	//console.log(this.data.diagram)
 }
 
-var Zone = require('./struct/center.js');
-var Corner = require('./struct/corner.js');
-var Edge = require('./struct/edge.js');
-MapFactory.prototype.updateZones = function() {
+MapFactory.prototype.printZones = function() {
+
 	var zones = {};
-	var self = this;
-	this.map.cells.map(function(cell){
-		console.log(cell)
-		var zone = new Zone();
-		zone.index = cell.site.voronoiId;
-		zone.point = {x:cell.site.x, y:cell.site.y};
-		zone.water = cell.water;
-		zones[cell.site.voronoiId] = zone;
+	var self = this;	
+	Object.keys(this.map.graph.zonesMap).map(function(key){
+		var zone = self.map.graph.zonesMap[key];
+		console.groupCollapsed('analisi zona '+ zone.id);
+		console.table(zone)
+		//analisi vicini
+		console.groupCollapsed('neighbours of '+ zone.id);
+		console.log(zone.id, 'neighbours ->',zone.neighbours.map(function(a){return a.id;}))
+		console.groupEnd();
+		//analisi borders
+		console.groupCollapsed('borders of '+ zone.id);
+		console.log(zone.borders.length, 'borders ->',zone.borders.map(function(a){return a.id;}))
+		zone.neighbours.map(function(neigh){
+			console.log('between',zone.id,'e', neigh.id,'--->', self.map.graph.commonBorder(zone.id, neigh.id))
+		})
+		console.groupEnd();	
+
+		//analisi corners
+
+		console.groupEnd();		
 	});
-	Object.keys(zones).map(function(key){
+	
+/*	Object.keys(zones).map(function(key){
 		var zone = zones[key];
 		var tmp = self.map.graph.zoneGraph.vertices.filter(function(v){return v.data.id == key;})
 		var _in = tmp[0]._in.map(function(edge){return edge.from.data.id;})
 		var _out = tmp[0]._out.map(function(edge){return edge.to.data.id;})
 		console.log('zone',key, 'in',_in,'_out',_out)
+		zone.neighbours = _in;
 	});
+*/
 
-	this.map.zones = zones;
+	//this.map.zones = zones;
 };
 
 MapFactory.prototype.updateMap = function() {
@@ -356,7 +372,6 @@ MapFactory.prototype.updateMap = function() {
 		this.map.edges = [];
 		this.map.cells = [];
 	}
-	return this.map;
 };
 
 MapFactory.prototype.getMap = function() {
@@ -369,14 +384,15 @@ MapFactory.prototype.debug = function() {
 };
 
 module.exports = MapFactory;
-},{"./libs/VorUtils":4,"./libs/voronoi":5,"./struct/center.js":7,"./struct/corner.js":8,"./struct/edge.js":9,"lodash":19}],3:[function(require,module,exports){
+},{"./libs/VorUtils":4,"./libs/voronoi":5,"lodash":19}],3:[function(require,module,exports){
 var MapFactory = require('./MapFactory');
 var CanvasRenderer = require('./renderers/CanvasRenderer')
 var raf = require('raf');
 var WIDTH = 800,
 	HEIGHT = 600,
-	ZONES = 10
-	;
+	ZONES = 60
+;
+	
 var App = function App() {
 	var self = this;
 	this.R = new CanvasRenderer({canvas: 'voronoiCanvas', width: WIDTH, height: HEIGHT});
@@ -475,70 +491,156 @@ var cellCentroid= function(cell) {
 }
 
 // Build graph data structure in 'edges', 'centers', 'corners',
-// based on information in the Voronoi results: point.neighbors
+// based on information in the Voronoi results: point.neighbours
 // will be a list of neighboring points of the same type (corner
 // or center); point.edges will be a list of edges that include
 // that point. Each edge connects to four points: the Voronoi edge
 // edge.{v0,v1} and its dual Delaunay triangle edge edge.{d0,d1}.
 // For boundary polygons, the Delaunay edge will have one null
 // point, and the Voronoi edge may be null.
+var Zone = require('../struct/center');
+var Edge = require('../struct/edge');
+var Corner = require('../struct/corner');
 var buildGraph = function (diagram) {
-	var zones = diagram.cells.map(function (cell) {return cell.site;});
-	var zonesMap = zones.reduce(function(acc, elem){acc[elem.voronoiId] = {id: elem.voronoiId,x: elem.x,y:elem.y}; return acc},{})
-	var zonesVertexMap = {};
-	var borderMap = {};
-	var borderVertexMap = {};
-	var edges = diagram.edges;
-	var vertex = diagram.vertices;
-
-	//Polygon (zones) GRAPH (nodes- zone center, edge- zones adjiacent)
-	var zoneGraph = new jKstra.Graph();
-	diagram.cells.map(function (cell) {
-		//zoneGraph.addVertex(zonesMap)
-		zonesVertexMap[cell.site.voronoiId] = zoneGraph.addVertex(zonesMap[cell.site.voronoiId],{id: cell.site.voronoiId })
-	})	
-	diagram.edges.map(function (edge) {
-		//console.log(edge)
-		if (edge.lSite && edge.rSite){
-			zoneGraph.addEdge(zonesVertexMap[edge.lSite.voronoiId],zonesVertexMap[edge.rSite.voronoiId],{id: edge.lSite.voronoiId+'-'+edge.rSite.voronoiId });
-			zoneGraph.addEdge(zonesVertexMap[edge.rSite.voronoiId],zonesVertexMap[edge.lSite.voronoiId],{id: edge.rSite.voronoiId+'-'+edge.lSite.voronoiId });
-		}
-	})
-
-	//Borders (between zones) VORONOI GRAPH (nodes- zone center, edge- zones adjiacent)
-	var borderGraph = new jKstra.Graph();
-	diagram.edges.map(function (edge) {
-		//console.log(edge)
-		if (edge.lSite && edge.rSite){
-			var createVertex = function(lSite, rSite){
-				var borderId = 'b'+lSite.voronoiId+'-'+rSite.voronoiId;
-				var vId0 = borderId+'-v0';
-				var vId1 = borderId+'-v1';
-				var v0 = {id:vId0, x:edge.va.x, y:edge.va.y}
-				var v1 = {id:vId1, x:edge.vb.x, y:edge.vb.y}
-
-				var border = {id: borderId, between:[lSite.voronoiId,rSite.voronoiId], vertices:[v0,v1]}				
-				borderMap[borderId] = border;
-				borderVertexMap[vId0] = borderGraph.addVertex(v0,v0);
-				borderVertexMap[vId1] = borderGraph.addVertex(v1,v1);
-				borderGraph.addEdge(borderVertexMap[vId0],borderVertexMap[vId1],{border:border});				
-			}
-			createVertex(edge.lSite, edge.rSite);		
-		}
-	})
+	var vCells = diagram.cells.map(function (cell) {return cell.site;});
+	var vEdges = diagram.edges;
+	var vCorners = diagram.vertices;
+	var edgesMap = {};
+	var cornersMap = {};
+	var zonesMap = vCells.reduce(function(acc, elem){
+						let zone = new Zone();
+						zone.id = elem.voronoiId;
+						zone.index = elem.voronoiId;
+						zone.point = {x: elem.x, y: elem.y};
+						zone.neighbours = []; //[zones]
+						zone.borders = []; //[edges]
+						zone.corners = [];//[corners]
+						acc[elem.voronoiId] = zone;
+						return acc},{})	
 	
-
-	//console.log(zoneGraph);
-	return{
-		zones: zones,
-		zonesMap: zonesMap, //{id: {x:.., y:..,}}
-		zonesVertexMap: zonesVertexMap,
-		zoneGraph: zoneGraph,
-
-		borderMap:borderMap,
-		borderVertexMap: borderVertexMap,
-		borderGraph: borderGraph,
+	
+	vCells.map(function (vCell) {
+		//console.log(vCell, zonesMap[vCell.voronoiId])		
+	})
+	var buildCorner = function(v){
+		let c = new Corner();
+		let vid = (v.x).toFixed(2)+'-'+(v.y).toFixed(2);
+		c.id= vid;
+        c.index= vid,      
+        c.point= {x:v.x, y:v.y};  // location 
+        return c;
 	}
+	vEdges.map(function (vEdge) {
+		if (vEdge.lSite && vEdge.rSite){
+			var z0 = zonesMap[vEdge.lSite.voronoiId];
+			var z1 = zonesMap[vEdge.rSite.voronoiId];
+			
+			var c0 = buildCorner(vEdge.va);
+			var c1 = buildCorner(vEdge.vb);	
+			if (!cornersMap[z0.id]){ cornersMap[z0.id] = [];}
+			cornersMap[z0.id][z1.id] = [c0,c1];
+
+			var eId = 'e'+z0.id+'-'+z1.id;			
+			if (!edgesMap[z0.id]){ edgesMap[z0.id] = {};}			
+			var edge = new Edge();
+			edge.index = eId;
+			edge.id = eId;
+	        edge.d0= z0;  // Delaunay edge
+	        edge.d1= z1;  // Delaunay edge
+	        edge.v0= c0;  // Voronoi edge
+	        edge.v1= c1;  // Voronoi edge
+	        edge.midpoint= {x: ((c0.point.x + c1.point.x)/2),y: ((c0.point.y + c1.point.y)/2)};  // halfway between v0,v1
+	        edge.river= 0;  // volume of water, or 0			
+	        edgesMap[z0.id][z1.id] = edge;
+
+			z0.neighbours.push(z1);
+			z0.corners.push(c0);
+			z0.corners.push(c1);
+			z0.borders.push(edgesMap[z0.id][z1.id]);
+			
+			z1.neighbours.push(z0);
+			z1.corners.push(c0);
+			z1.corners.push(c1);
+			z1.borders.push(edgesMap[z0.id][z1.id]);
+
+			c0.zones.push(z0);
+			c0.zones.push(z1);
+			c0.edges.push(edgesMap[z0.id][z1.id]);
+			c0.corners.push(c1);
+
+			c1.zones.push(z0);			
+			c1.zones.push(z1);
+			c1.edges.push(edgesMap[z0.id][z1.id]);
+			c1.corners.push(c0 );
+			z0.border = false;
+			z1.border = false;
+			//console.log(edgesMap[eId],'edge tra',z0, 'e', z1, c0,c1);
+		}else{
+			//mi segno che la zona è a bordomappa
+			var z = vEdge.lSite ? zonesMap[vEdge.lSite.voronoiId] : zonesMap[vEdge.rSite.voronoiId];
+			var c0 = buildCorner(vEdge.va);
+			var c1 = buildCorner(vEdge.vb);	
+			if (!cornersMap[z.id]){ cornersMap[z.id] = [];}
+			cornersMap[z.id]['outside'] = [c0,c1];
+
+			var eId = 'e'+z.id+'-'+'out';			
+			if (!edgesMap[z.id]){ edgesMap[z.id] = {};}			
+			var edge = new Edge();
+			edge.index = eId;
+			edge.id = eId;
+	        edge.d0= z;  // Delaunay edge
+	        edge.d1= null;  // Delaunay edge
+	        edge.v0= c0;  // Voronoi edge
+	        edge.v1= c1;  // Voronoi edge
+	        edge.midpoint= {x: ((c0.point.x + c1.point.x)/2),y: ((c0.point.y + c1.point.y)/2)};  // halfway between v0,v1
+	        edge.river= 0;  // volume of water, or 0			
+	        edgesMap[z.id]['outside'] = edge;
+
+			z.corners.push(c0);
+			z.corners.push(c1);
+			z.borders.push(edgesMap[z.id]['outside']);
+			
+			c0.zones.push(z);
+			c0.edges.push(edgesMap[z.id]['outside']);
+			c0.corners.push(c1);
+
+			c1.zones.push(z);			
+			c1.edges.push(edgesMap[z.id]['outside']);
+			c1.corners.push(c0 );
+			z.border = true;
+		}
+	})
+
+	var graphZ = new jKstra.Graph();
+	Object.keys(zonesMap).map(function(key){
+		var zone = zonesMap[key];
+		zone.gZvertex = graphZ.addVertex(zone.id,zone);
+		zone.gZedges = [];
+	});
+	Object.keys(zonesMap).map(function(key){
+		var zone = zonesMap[key];
+		zone.neighbours.map(function(neigh){
+			var commonBorder = (edgesMap[zone.id]||{})[neigh.id]||(edgesMap[neigh.id]||{})[zone.id];
+			/*GRAPH ZONES - edges*/
+			var gEdge0 = graphZ.addEdge(zone.gZvertex, neigh.gZvertex,commonBorder);
+			var gEdge1 = graphZ.addEdge(neigh.gZvertex, zone.gZvertex,commonBorder);
+			zone.gZedges.push(gEdge0);
+			zone.gZedges.push(gEdge1);
+			//neigh.gZedges.push(gEdge0);
+			//neigh.gZedges.push(gEdge1);
+		})
+		
+	});
+
+
+	var ret = {
+		zonesMap: zonesMap,
+		edgesMap: edgesMap,
+		cornersMap: cornersMap,
+		GZ: graphZ,
+		commonBorder: function(z1,z2){return (edgesMap[z1]||{})[z2]||(edgesMap[z2]||{})[z1];}
+	};
+	return ret;
 };
 var  toInt = function (something) {
     return something | 0;
@@ -546,10 +648,23 @@ var  toInt = function (something) {
 
 var Noise = require('noisejs').Noise;
 var noise = new Noise(Math.random());
+var distanceFromCenter= function (p,w,h) {
+		var c = {x: w/2, y: h/2};
+        return Math.sqrt(((c.x-p.x) * (c.x-p.x)) + ((c.y-p.y) * (c.y-p.y)));
+    };
+var map = function (val, interval_dest, interval_source) {
+	return (val - interval_source[0])*(interval_dest[1]-interval_dest[0])/(interval_source[1]-interval_source[0]) + interval_dest[0];
+}
 var makePerlin = function(W,H){	
+
     return function (q) {
     	//console.log(noise.perlin2(q.x / 100, q.y / 100))
-    	return noise.perlin2(q.x , q.y )>0 ;
+    	var min_distance = 0;
+    	var max_distance = distanceFromCenter({x:0,y:0},W,H);
+    	var this_distance = distanceFromCenter(q,W,H);
+    	var water_prob = map(this_distance,[-1,1],[min_distance,max_distance]);
+    	var perlin = noise.perlin2(q.x , q.y );
+    	return perlin + (water_prob/2) >0 ;
     };
 }
 
@@ -562,7 +677,7 @@ var VorUtils = {
 	makePerlin: makePerlin,
 }
 module.exports = VorUtils;
-},{"jkstra":18,"noisejs":20}],5:[function(require,module,exports){
+},{"../struct/center":7,"../struct/corner":8,"../struct/edge":9,"jkstra":18,"noisejs":20}],5:[function(require,module,exports){
 /*!
 Copyright (C) 2010-2013 Raymond Hill: https://github.com/gorhill/Javascript-Voronoi
 MIT License: See https://github.com/gorhill/Javascript-Voronoi/LICENSE.md
@@ -2351,34 +2466,129 @@ var Renderer = function (opts) {
 		ctx.stroke();		
 	}
 
-	var drawZones = function (ctx, zones) {
 
+
+	/*ZONES*/
+
+	var drawZoneCenter = function (ctx, zone) {
 		ctx.beginPath();
-		ctx.strokeStyle = '#0FF';
+		ctx.fillStyle = '#f00';
+		let v = zone.point;
+		ctx.rect(v.x-2/3,v.y-2/3,2,2);
+		ctx.fill();
+	}
 
-		Object.keys(zones).map(function(zone){
-			return(zones[zone].water);
+	var drawZoneName = function(ctx, zone){
+		if (zone.water){
+			ctx.fillStyle = '#fff';
+		}else{
+			ctx.fillStyle = '#fff';
+		}
+		ctx.font="13px Verdana";
+		ctx.fillText(zone.tipo+' '+zone.id, zone.point.x - 13,zone.point.y +10);
+		if (zone.water){
+			ctx.font="10px Verdana";
+			ctx.fillText('water', zone.point.x - 13,zone.point.y +20);	
+		}		
+		//ctx.fill();
+	}
+	var drawZoneColor = function (ctx, zone) {
+		//console.log(zone);	
+		//var points = zone.corners.map(function (c) {return c.point;})
+		var points = zone.borders.reduce(function (acc, border) {return acc.concat([border.v0.point].concat([border.v1.point]))},[])
+
+
+		var isTheSame = function (p1,p2) {
+			return (p1.x==p2.x && p1.y==p2.y);
+		}
+		var nextBorder = function (b, borders) {
+			for (var i = 0; i < borders.length; i++) {
+				var border = borders[i];
+				if (isTheSame(b.v1.point, border.v0.point) && (!isTheSame(b.v0.point, border.v1.point))){
+					//console.log('trovato')
+					return border;
+				}
+				if (isTheSame(b.v1.point, border.v1.point) && (!isTheSame(b.v0.point, border.v0.point))){
+					let vt = border.v1;
+					border.v1 = border.v0;
+					border.v0 = vt;
+					return border;
+				}
+			}
+			return null;			
+		}
+
+		var points = [];
+		var border = zone.borders[0];
+		points.push(border.v0.point);
+		points.push(border.v1.point);
+		for (var i = 1; i < zone.borders.length; i++) {
+			if (border){
+				border = nextBorder(border, zone.borders);
+				if (border){
+					points.push(border.v1.point);	
+				}else{
+					console.log('nessun next border')
+					break;
+				}				
+			}else{
+				console.log('nessun next border')
+				break;
+			}
+		}
+		
+
+		
+
+
+
+		ctx.fillStyle = zone.water ? '#44f' : '#4fg';
+		ctx.beginPath();
+		ctx.moveTo(points[0].x,points[0].y)
+		points.map(function (p) {
+			ctx.lineTo(p.x, p.y);
 		})
+		ctx.lineTo(points[0].x,points[0].y)
+		ctx.closePath();
+		ctx.fill();
+	}
+
+	var drawZones = function (ctx, zones) {
+		
+		Object.keys(zones).map(function(key){
+			var zone = zones[key];
+			//console.log(zone)
+			drawZoneCenter(ctx,zone);
+			drawZoneColor(ctx,zone);
+			drawZoneName(ctx,zone);			
+		})
+		/*ctx.beginPath();
+		ctx.strokeStyle = '#0FF';
+		ctx.moveTo(v0.x,v0.y);
+		ctx.lineTo(v1.x,v1.y);
 		ctx.stroke();		
+		*/
 	}
 
 
 	this.render = function (map) {	
 		var ctx = canvas.getContext('2d');
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		ctx.globalAlpha = 1;
 		drawBack(ctx);
-		if (map && map.sites){
-			//drawSites(ctx, map.sites);
-			drawVertex(ctx, map.sites);
-		}
+		/*if (map && map.sites){
+			drawSites(ctx, map.sites);			
+		}*/
 		if (map && map.edges){
 			drawEdges(ctx, map.edges)
 		}
-		if (map && map.graph){
+		/*
+		if (map && map.graph  && map.graph.borderMap){
 			drawBorders(ctx,map.graph.borderMap);
 		}
-		if (map && map.zones){
-			drawZones(ctx,map.zones);
+		*/
+		if (map && map.graph && map.graph.zonesMap){
+			drawZones(ctx,map.graph.zonesMap);
 		}
 
 	}
@@ -2390,19 +2600,20 @@ module.exports = Renderer;
 module.exports = function () {
     return {
         index: null,
-      
+        id: null,
+        tipo:'zona',
         point: null,        // Point location
-        water: null,        // lake or ocean
-        ocean: null,        // ocean
-        coast: null,        // land polygon touching an ocean
-        border: null,       // at the edge of the map
+        water: false,        // lake or ocean
+        ocean: false,        // ocean
+        coast: false,        // land polygon touching an ocean
+        border: false,       // at the edge of the map
         biome: null,          // biome type (see article)
         elevation: null,     // 0.0-1.0
         moisture: null,      // 0.0-1.0
 
-        neighbors: null,    // Vector<Center>
-        borders: null,      // Vector<Edge>
-        corners: null       // Vector<Corner>
+        neighbors: [],    // Vector<Center>
+        borders: [],      // Vector<Edge>
+        corners: [],       // Vector<Corner>
     };
 };
 },{}],8:[function(require,module,exports){
@@ -2415,9 +2626,10 @@ module.exports = function () {
 
 module.exports = function () {
     return {
-        index: null,
-      
+        id:null,
+        index: null,      
         point: null,  // location
+        tipo:'corner',
         ocean: null,  // ocean
         water: null,  // lake or ocean
         coast: null,  // touches ocean and land polygons
@@ -2425,9 +2637,9 @@ module.exports = function () {
         elevation: null,  // 0.0-1.0
         moisture: null,  // 0.0-1.0
 
-        touches: null,
-        protrudes: null,
-        adjacent: null,
+        zones: [], //zone adiacenti
+        edges: [], //edges adiacenti
+        corners: [], //corners adiacenti
       
         river: null,  // 0 if no river, or volume of water in river
         downslope: null,  // pointer to adjacent corner most downhill
@@ -2445,7 +2657,9 @@ module.exports = function () {
 
 module.exports = function () {
     return {
-        index: 0,
+        tipo: 'edge',
+        id:null,
+        index: null,
         d0: null,  // Delaunay edge
         d1: null,  // Delaunay edge
         v0: null,  // Voronoi edge
