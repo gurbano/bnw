@@ -47,9 +47,14 @@ MapFactory.prototype.getBBox = function() {
 	return {xl:0,xr:this.getOpts().width,yt:0,yb:this.getOpts().width};
 };
 
-MapFactory.prototype.generatePoints = function() {
+MapFactory.prototype.generatePoints = function(add) {
+	add = add || false;
 	var n = this.getOpts().sites;
-	this.data.sites = [];
+	if(!add){
+		this.data.sites = [];	
+	}else{
+		n = n/2;
+	}	
 	var xo = 0;
 	var dx = this.getOpts().width;
 	var yo = 0;
@@ -62,7 +67,7 @@ MapFactory.prototype.generatePoints = function() {
 };
 MapFactory.prototype.assignWater = function(){
 	var self = this;
-	var pValue = VU.makePerlin(this.getOpts().width, this.getOpts().height);
+	var pValue = VU.makePerlin(this.getOpts().width, this.getOpts().height, 111);
 	var inside = function (p) {
         return pValue({ x: 2 * (p.x / this.getOpts().width - 0.5), y: 2 * (p.y / this.getOpts().height - 0.5) });
     };
@@ -75,17 +80,33 @@ MapFactory.prototype.assignWater = function(){
 		}		
 		//console.log(zone.point.x,zone.point.y,zone.water);
 	});
-
-
+}
+MapFactory.prototype.assignOceans = function(){
+	var self = this;
+    Object.keys(this.map.graph.zonesMap)
+    	.filter(function (key) {return self.map.graph.zonesMap[key].water;}) //filtro quelle con l'acqua
+    	.map(function(key){
+			var zone = self.map.graph.zonesMap[key];
+			if (zone.border){
+				zone.ocean = true;
+			}else{
+				//var hasOceanneighbors = zone.ne
+			}		
+		//console.log(zone.point.x,zone.point.y,zone.water);
+	});
+	
+	console.log(this.map.graph.zGraph)
 }
 MapFactory.prototype.voronoiPass = function() {
 	var self = this;
 	this.voronoi.recycle(this.data.diagram);
 	this.data.diagram = this.voronoi.compute(this.data.sites, this.getBBox());
-	console.log('voronoiPass' ,this.data.diagram.execTime + ' ms');
+	console.log('voronoiPass' ,this.data.diagram.execTime + ' ms', this.data.diagram);
 	this.updateMap();
 	this.updateGraph(); //build this.map.graph zonesMap
 	this.assignWater(); //
+	this.assignOceans(); //
+
 	//this.printZones();
 };
 MapFactory.prototype.relaxPass = function(again) {
@@ -148,13 +169,13 @@ MapFactory.prototype.printZones = function() {
 		console.groupCollapsed('analisi zona '+ zone.id);
 		console.table(zone)
 		//analisi vicini
-		console.groupCollapsed('neighbours of '+ zone.id);
-		console.log(zone.id, 'neighbours ->',zone.neighbours.map(function(a){return a.id;}))
+		console.groupCollapsed('neighbors of '+ zone.id);
+		console.log(zone.id, 'neighbors ->',zone.neighbors.map(function(a){return a.id;}))
 		console.groupEnd();
 		//analisi borders
 		console.groupCollapsed('borders of '+ zone.id);
 		console.log(zone.borders.length, 'borders ->',zone.borders.map(function(a){return a.id;}))
-		zone.neighbours.map(function(neigh){
+		zone.neighbors.map(function(neigh){
 			console.log('between',zone.id,'e', neigh.id,'--->', self.map.graph.commonBorder(zone.id, neigh.id))
 		})
 		console.groupEnd();	
@@ -170,7 +191,7 @@ MapFactory.prototype.printZones = function() {
 		var _in = tmp[0]._in.map(function(edge){return edge.from.data.id;})
 		var _out = tmp[0]._out.map(function(edge){return edge.to.data.id;})
 		console.log('zone',key, 'in',_in,'_out',_out)
-		zone.neighbours = _in;
+		zone.neighbors = _in;
 	});
 */
 
@@ -194,6 +215,14 @@ MapFactory.prototype.updateMap = function() {
 MapFactory.prototype.getMap = function() {
 	return this.map;
 };
+
+MapFactory.prototype.getZone = function(point) {
+	var zone = VU.getZone(point, this.map.graph.zonesMap);
+
+
+	return zone;
+};
+
 MapFactory.prototype.debug = function() {
 	var self = this;
 	this.updateMap();

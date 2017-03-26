@@ -40,7 +40,7 @@ var cellCentroid= function(cell) {
 }
 
 // Build graph data structure in 'edges', 'centers', 'corners',
-// based on information in the Voronoi results: point.neighbours
+// based on information in the Voronoi results: point.neighbors
 // will be a list of neighboring points of the same type (corner
 // or center); point.edges will be a list of edges that include
 // that point. Each edge connects to four points: the Voronoi edge
@@ -60,8 +60,8 @@ var buildGraph = function (diagram) {
 						let zone = new Zone();
 						zone.id = elem.voronoiId;
 						zone.index = elem.voronoiId;
-						zone.point = {x: elem.x, y: elem.y};
-						zone.neighbours = []; //[zones]
+						zone.point = {x: elem.x.toFixed(2), y: elem.y.toFixed(2)};
+						zone.neighbors = []; //[zones]
 						zone.borders = []; //[edges]
 						zone.corners = [];//[corners]
 						acc[elem.voronoiId] = zone;
@@ -76,7 +76,7 @@ var buildGraph = function (diagram) {
 		let vid = (v.x).toFixed(2)+'-'+(v.y).toFixed(2);
 		c.id= vid;
         c.index= vid,      
-        c.point= {x:v.x, y:v.y};  // location 
+        c.point= {x:v.x.toFixed(2), y:v.y.toFixed(2)};  // location 
         return c;
 	}
 	vEdges.map(function (vEdge) {
@@ -102,12 +102,12 @@ var buildGraph = function (diagram) {
 	        edge.river= 0;  // volume of water, or 0			
 	        edgesMap[z0.id][z1.id] = edge;
 
-			z0.neighbours.push(z1);
+			z0.neighbors.push(z1);
 			z0.corners.push(c0);
 			z0.corners.push(c1);
 			z0.borders.push(edgesMap[z0.id][z1.id]);
 			
-			z1.neighbours.push(z0);
+			z1.neighbors.push(z0);
 			z1.corners.push(c0);
 			z1.corners.push(c1);
 			z1.borders.push(edgesMap[z0.id][z1.id]);
@@ -168,7 +168,7 @@ var buildGraph = function (diagram) {
 	});
 	Object.keys(zonesMap).map(function(key){
 		var zone = zonesMap[key];
-		zone.neighbours.map(function(neigh){
+		zone.neighbors.map(function(neigh){
 			var commonBorder = (edgesMap[zone.id]||{})[neigh.id]||(edgesMap[neigh.id]||{})[zone.id];
 			/*GRAPH ZONES - edges*/
 			var gEdge0 = graphZ.addEdge(zone.gZvertex, neigh.gZvertex,commonBorder);
@@ -196,7 +196,6 @@ var  toInt = function (something) {
 };
 
 var Noise = require('noisejs').Noise;
-var noise = new Noise(Math.random());
 var distanceFromCenter= function (p,w,h) {
 		var c = {x: w/2, y: h/2};
         return Math.sqrt(((c.x-p.x) * (c.x-p.x)) + ((c.y-p.y) * (c.y-p.y)));
@@ -204,19 +203,35 @@ var distanceFromCenter= function (p,w,h) {
 var map = function (val, interval_dest, interval_source) {
 	return (val - interval_source[0])*(interval_dest[1]-interval_dest[0])/(interval_source[1]-interval_source[0]) + interval_dest[0];
 }
-var makePerlin = function(W,H){	
 
+var noise = new Noise(Math.random());
+var makePerlin = function(W,H,seed){	
     return function (q) {
     	//console.log(noise.perlin2(q.x / 100, q.y / 100))
+    	var water_modify = -0;
     	var min_distance = 0;
     	var max_distance = distanceFromCenter({x:0,y:0},W,H);
     	var this_distance = distanceFromCenter(q,W,H);
-    	var water_prob = map(this_distance,[-1,1],[min_distance,max_distance]);
-    	var perlin = noise.perlin2(q.x , q.y );
-    	return perlin + (water_prob/2) >0 ;
+    	var water_prob = map(this_distance,[-0,1.3],[min_distance,max_distance]);
+    	var perlin = noise.perlin2((q.x/60) , (q.y/60)) ;
+    	//return ((perlin) + (water_prob )  + water_modify)> - 0 ;
+    	console.log(q.x , q.y, perlin)
+    	return water_prob+perlin>0.4;
     };
 }
-
+var getZone = function (point, zonesMap) {
+	var retZone = undefined;
+	var lessDistance = Number.MAX_SAFE_INTEGER;
+	Object.keys(zonesMap).map(function(key){
+		var zone = zonesMap[key];
+		var d = distance(point, zone.point);
+		if (d < lessDistance){
+			lessDistance = d;
+			retZone = zone;
+		}
+	});
+	return retZone;
+}
 
 var VorUtils = {
 	distance: distance,
@@ -224,5 +239,6 @@ var VorUtils = {
 	cellCentroid: cellCentroid,
 	buildGraph: buildGraph,
 	makePerlin: makePerlin,
+	getZone: getZone,
 }
 module.exports = VorUtils;

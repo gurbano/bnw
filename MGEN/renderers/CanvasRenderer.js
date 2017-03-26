@@ -1,18 +1,26 @@
+
 var Renderer = function (opts) {
 	var canvas = document.getElementById(opts.canvas);
 	canvas.width  = opts.width; // in pixels
 	canvas.height = opts.height; // in pixels
 
+	var resetCtx = function (ctx) {
+		ctx.beginPath();
+		ctx.fillStyle = 'black';
+		ctx.strokeStyle = '#767';
+		ctx.lineWidth=1;
+	}
+
 	var drawBack = function (ctx) {		
 		ctx.beginPath();
 		ctx.rect(0,0,canvas.width,canvas.height);
-		ctx.fillStyle = 'white';
+		ctx.fillStyle = 'black';
 		ctx.fill();
-		ctx.strokeStyle = '#888';
+		ctx.strokeStyle = '#767';
 		ctx.stroke();
 	}
 	var drawSites = function (ctx, sites) {
-		ctx.beginPath();
+		resetCtx(ctx);
 		ctx.fillStyle = '#44f';
 		var iSite = sites.length;
 		while (iSite--) {
@@ -22,7 +30,7 @@ var Renderer = function (opts) {
 		ctx.fill();
 	}
 	var drawVertex = function (ctx, sites) {
-		ctx.beginPath();
+		resetCtx(ctx);
 		ctx.fillStyle = '#f00';
 		var iSite = sites.length;
 		while (iSite--) {
@@ -32,8 +40,8 @@ var Renderer = function (opts) {
 		ctx.fill();
 	}
 	var drawEdges = function (ctx, edges) {
-		ctx.beginPath();
-		ctx.strokeStyle = '#000';
+		resetCtx(ctx);
+		ctx.strokeStyle = '#888';
 		var	iEdge = edges.length,
 			edge, v;
 		while (iEdge--) {
@@ -48,7 +56,7 @@ var Renderer = function (opts) {
 	}
 	var drawBorders = function (ctx, borderMap) {
 
-		ctx.beginPath();
+		resetCtx(ctx);
 		ctx.strokeStyle = '#0FF';
 
 		Object.keys(borderMap).map(function(key){
@@ -66,26 +74,35 @@ var Renderer = function (opts) {
 	/*ZONES*/
 
 	var drawZoneCenter = function (ctx, zone) {
-		ctx.beginPath();
-		ctx.fillStyle = '#f00';
+		resetCtx(ctx);
+		//if (!zone.debug){return}
+		ctx.fillStyle = '#000';
 		let v = zone.point;
-		ctx.rect(v.x-2/3,v.y-2/3,2,2);
+		ctx.rect(v.x-2,v.y-2,2,2);
 		ctx.fill();
+		
 	}
 
 	var drawZoneName = function(ctx, zone){
+		resetCtx(ctx);
+		if (!zone.debug){return}
 		if (zone.water){
 			ctx.fillStyle = '#fff';
 		}else{
 			ctx.fillStyle = '#fff';
 		}
-		ctx.font="13px Verdana";
-		ctx.fillText(zone.tipo+' '+zone.id, zone.point.x - 13,zone.point.y +10);
-		if (zone.water){
+		ctx.font="12px Arial";
+		
+		
+		var x = parseInt(zone.point.x) - 10;
+		var y = parseInt(zone.point.y) + 15;
+		ctx.fillText('z'+zone.id, x,y );
+		//ctx.fill();
+		/*if (zone.water){
 			ctx.font="10px Verdana";
 			ctx.fillText('water', zone.point.x - 13,zone.point.y +20);	
-		}		
-		//ctx.fill();
+		}*/		
+		resetCtx(ctx);
 	}
 	var drawZoneColor = function (ctx, zone) {
 		//console.log(zone);	
@@ -94,7 +111,7 @@ var Renderer = function (opts) {
 
 
 		var isTheSame = function (p1,p2) {
-			return (p1.x==p2.x && p1.y==p2.y);
+			return (parseFloat(p1.x).toFixed(2)==parseFloat(p2.x).toFixed(2) && parseFloat(p1.y).toFixed(2)==parseFloat(p2.y).toFixed(2));
 		}
 		var nextBorder = function (b, borders) {
 			for (var i = 0; i < borders.length; i++) {
@@ -119,73 +136,94 @@ var Renderer = function (opts) {
 		points.push(border.v1.point);
 		for (var i = 1; i < zone.borders.length; i++) {
 			if (border){
+				var old_border = border;
 				border = nextBorder(border, zone.borders);
 				if (border){
 					points.push(border.v1.point);	
 				}else{
+					console.table(points)
 					console.log('nessun next border')
+					console.table(border)					
+					console.table(zone.borders)
 					break;
 				}				
 			}else{
 				console.log('nessun next border')
-				break;
+				
+				//break;
 			}
 		}
-		
-
-		
-
-
-
-		ctx.fillStyle = zone.water ? '#44f' : '#4fg';
-		ctx.beginPath();
+		resetCtx(ctx);
+		ctx.lineWidth=0.1
+		ctx.strokeStyle = zone.water ? 'rgba(60,90,255,0.7)' : 'rgba(60,255,60,0.7)';
+		ctx.fillStyle = zone.water ? 'rgba(60,90,255,0.7)' : 'rgba(60,255,60,0.7)';
 		ctx.moveTo(points[0].x,points[0].y)
 		points.map(function (p) {
 			ctx.lineTo(p.x, p.y);
 		})
 		ctx.lineTo(points[0].x,points[0].y)
+			
 		ctx.closePath();
+		ctx.stroke();
 		ctx.fill();
 	}
 
-	var drawZones = function (ctx, zones) {
+	var drawZones = function (camera, ctx, zones) {
 		
 		Object.keys(zones).map(function(key){
 			var zone = zones[key];
-			//console.log(zone)
-			drawZoneCenter(ctx,zone);
-			drawZoneColor(ctx,zone);
+			drawZoneColor(ctx,zone);			
+		})
+		Object.keys(zones).map(function(key){
+			var zone = zones[key];	
+			drawZoneCenter(ctx,zone);			
 			drawZoneName(ctx,zone);			
 		})
-		/*ctx.beginPath();
-		ctx.strokeStyle = '#0FF';
-		ctx.moveTo(v0.x,v0.y);
-		ctx.lineTo(v1.x,v1.y);
-		ctx.stroke();		
-		*/
+		
 	}
 
+	var _z= 1;
+	var view = {		
+		zoom: _z,
+		center: {
+			x: canvas.width/2,
+			y: canvas.height/2
+		}
+	}
+
+	this.resetZoom = function () {
+		view.zoom = 1/_z;
+		_z=1;
+	}
+	this.zoom = function (zoomIn) {
+		if(zoomIn){
+			view.zoom = 1.1;
+			_z = _z*1.1;			
+		}else{
+			view.zoom = 0.9;
+			_z = _z*0.9;
+		}
+		console.log('zoom level',_z )
+	}
+
+	var xView =0;
+	var yView =0;
 
 	this.render = function (map) {	
 		var ctx = canvas.getContext('2d');
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		ctx.globalAlpha = 1;
-		drawBack(ctx);
-		/*if (map && map.sites){
-			drawSites(ctx, map.sites);			
-		}*/
-		if (map && map.edges){
-			drawEdges(ctx, map.edges)
-		}
-		/*
-		if (map && map.graph  && map.graph.borderMap){
-			drawBorders(ctx,map.graph.borderMap);
-		}
-		*/
+		/*START DRAWING*/
+		drawBack(ctx);		
 		if (map && map.graph && map.graph.zonesMap){
-			drawZones(ctx,map.graph.zonesMap);
+			drawZones(view,ctx,map.graph.zonesMap);
 		}
-
+		ctx.scale(view.zoom,view.zoom)
+		view.zoom = 1;
+		this.image = new Image();
+		this.image.src = ctx.canvas.toDataURL("image/png");	
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		ctx.drawImage(this.image, 0, 0, this.image.width*view.zoom, this.image.height*view.zoom, -xView*view.zoom, -yView*view.zoom, this.image.width*view.zoom, this.image.height*view.zoom);
 	}
 }
 module.exports = Renderer;

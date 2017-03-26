@@ -230,9 +230,14 @@ MapFactory.prototype.getBBox = function() {
 	return {xl:0,xr:this.getOpts().width,yt:0,yb:this.getOpts().width};
 };
 
-MapFactory.prototype.generatePoints = function() {
+MapFactory.prototype.generatePoints = function(add) {
+	add = add || false;
 	var n = this.getOpts().sites;
-	this.data.sites = [];
+	if(!add){
+		this.data.sites = [];	
+	}else{
+		n = n/2;
+	}	
 	var xo = 0;
 	var dx = this.getOpts().width;
 	var yo = 0;
@@ -245,7 +250,7 @@ MapFactory.prototype.generatePoints = function() {
 };
 MapFactory.prototype.assignWater = function(){
 	var self = this;
-	var pValue = VU.makePerlin(this.getOpts().width, this.getOpts().height);
+	var pValue = VU.makePerlin(this.getOpts().width, this.getOpts().height, 111);
 	var inside = function (p) {
         return pValue({ x: 2 * (p.x / this.getOpts().width - 0.5), y: 2 * (p.y / this.getOpts().height - 0.5) });
     };
@@ -258,17 +263,33 @@ MapFactory.prototype.assignWater = function(){
 		}		
 		//console.log(zone.point.x,zone.point.y,zone.water);
 	});
-
-
+}
+MapFactory.prototype.assignOceans = function(){
+	var self = this;
+    Object.keys(this.map.graph.zonesMap)
+    	.filter(function (key) {return self.map.graph.zonesMap[key].water;}) //filtro quelle con l'acqua
+    	.map(function(key){
+			var zone = self.map.graph.zonesMap[key];
+			if (zone.border){
+				zone.ocean = true;
+			}else{
+				//var hasOceanneighbors = zone.ne
+			}		
+		//console.log(zone.point.x,zone.point.y,zone.water);
+	});
+	
+	console.log(this.map.graph.zGraph)
 }
 MapFactory.prototype.voronoiPass = function() {
 	var self = this;
 	this.voronoi.recycle(this.data.diagram);
 	this.data.diagram = this.voronoi.compute(this.data.sites, this.getBBox());
-	console.log('voronoiPass' ,this.data.diagram.execTime + ' ms');
+	console.log('voronoiPass' ,this.data.diagram.execTime + ' ms', this.data.diagram);
 	this.updateMap();
 	this.updateGraph(); //build this.map.graph zonesMap
 	this.assignWater(); //
+	this.assignOceans(); //
+
 	//this.printZones();
 };
 MapFactory.prototype.relaxPass = function(again) {
@@ -331,13 +352,13 @@ MapFactory.prototype.printZones = function() {
 		console.groupCollapsed('analisi zona '+ zone.id);
 		console.table(zone)
 		//analisi vicini
-		console.groupCollapsed('neighbours of '+ zone.id);
-		console.log(zone.id, 'neighbours ->',zone.neighbours.map(function(a){return a.id;}))
+		console.groupCollapsed('neighbors of '+ zone.id);
+		console.log(zone.id, 'neighbors ->',zone.neighbors.map(function(a){return a.id;}))
 		console.groupEnd();
 		//analisi borders
 		console.groupCollapsed('borders of '+ zone.id);
 		console.log(zone.borders.length, 'borders ->',zone.borders.map(function(a){return a.id;}))
-		zone.neighbours.map(function(neigh){
+		zone.neighbors.map(function(neigh){
 			console.log('between',zone.id,'e', neigh.id,'--->', self.map.graph.commonBorder(zone.id, neigh.id))
 		})
 		console.groupEnd();	
@@ -353,7 +374,7 @@ MapFactory.prototype.printZones = function() {
 		var _in = tmp[0]._in.map(function(edge){return edge.from.data.id;})
 		var _out = tmp[0]._out.map(function(edge){return edge.to.data.id;})
 		console.log('zone',key, 'in',_in,'_out',_out)
-		zone.neighbours = _in;
+		zone.neighbors = _in;
 	});
 */
 
@@ -377,6 +398,14 @@ MapFactory.prototype.updateMap = function() {
 MapFactory.prototype.getMap = function() {
 	return this.map;
 };
+
+MapFactory.prototype.getZone = function(point) {
+	var zone = VU.getZone(point, this.map.graph.zonesMap);
+
+
+	return zone;
+};
+
 MapFactory.prototype.debug = function() {
 	var self = this;
 	this.updateMap();
@@ -384,19 +413,22 @@ MapFactory.prototype.debug = function() {
 };
 
 module.exports = MapFactory;
-},{"./libs/VorUtils":4,"./libs/voronoi":5,"lodash":19}],3:[function(require,module,exports){
+},{"./libs/VorUtils":5,"./libs/voronoi":6,"lodash":20}],3:[function(require,module,exports){
 var MapFactory = require('./MapFactory');
+var Commander = require('./commander/commander');
 var CanvasRenderer = require('./renderers/CanvasRenderer')
 var raf = require('raf');
-var WIDTH = 800,
-	HEIGHT = 600,
-	ZONES = 60
-;
-	
+var WIDTH = 1024,
+HEIGHT = 768,
+ZONES = 2500;
+
 var App = function App() {
 	var self = this;
-	this.R = new CanvasRenderer({canvas: 'voronoiCanvas', width: WIDTH, height: HEIGHT});
+	var canvasId = 'voronoiCanvas';
+	this.canvas = document.getElementById(canvasId)
+	this.R = new CanvasRenderer({canvas: canvasId, width: WIDTH, height: HEIGHT});
 	this.MF = new MapFactory({sites:ZONES, width: WIDTH, height: HEIGHT});
+	this.C = new Commander(this);
 	var looper = function (argument) {
 		this.loop(this.handle || 0);
 		this.handle = raf(looper.bind(this));
@@ -406,9 +438,13 @@ var App = function App() {
 		this.handle = raf(looper.bind(this));
 	}
 	var initUI = function () {
+		document.getElementById('btn_rp').onclick = function () {
+			console.log('resetta punti');
+			console.log(self.C.execute('genera',[false]));
+		};
 		document.getElementById('btn_gp').onclick = function () {
 			console.log('genero punti');
-			self.MF.generatePoints();
+			console.log(self.C.execute('genera',[true]));
 		};
 		document.getElementById('btn_vor').onclick = function () {
 			console.log('genero voronoi');
@@ -418,7 +454,35 @@ var App = function App() {
 			console.log('rilasso voronoi');
 			self.MF.relaxPass();
 		};
-
+		function getMousePos(canvas, evt) {
+	        var rect = canvas.getBoundingClientRect();
+	        return {
+	          x: evt.clientX - rect.left,
+	          y: evt.clientY - rect.top
+	        };
+	      }
+		self.canvas.addEventListener('mousemove', function(evt) {
+			var mousePos = getMousePos(self.canvas, evt);
+			self.C.execute('mousemove',[{x:mousePos.x, y: mousePos.y}])
+		}, false);
+		self.canvas.addEventListener('click', function(evt) {
+			var mousePos = getMousePos(self.canvas, evt);
+			self.C.execute('leftclick',[{x:mousePos.x, y: mousePos.y}])
+			evt.stopPropagation();
+			evt.preventDefault();
+		}, false);
+		self.canvas.addEventListener('contextmenu', function(evt) {
+			var mousePos = getMousePos(self.canvas, evt);
+			self.C.execute('rightclick',[{x:mousePos.x, y: mousePos.y}])
+			evt.stopPropagation();
+			evt.preventDefault();
+		}, false);
+		self.canvas.addEventListener('mousewheel', function(evt) {
+			var mousePos = getMousePos(self.canvas, evt);
+			self.C.execute('mousewheel',[{x:mousePos.x, y: mousePos.y},evt.wheelDelta])
+			evt.stopPropagation();
+			evt.preventDefault();
+		}, false);
 
 	}
 	initUI();
@@ -448,7 +512,49 @@ MF.debug();
 R.render();
 
 */
-},{"./MapFactory":2,"./renderers/CanvasRenderer":6,"raf":22}],4:[function(require,module,exports){
+},{"./MapFactory":2,"./commander/commander":4,"./renderers/CanvasRenderer":7,"raf":23}],4:[function(require,module,exports){
+var Commander = function (app) {
+	var self = this;
+	this.app = app;
+
+	var lastZoneSelected = {debug:false};
+	var commands ={
+		'genera': function (args) {
+			this.MF.generatePoints(args);
+			return true;
+		},
+		'leftclick': function (point) {
+			console.info(point);
+			console.info(this.MF.getZone(point));
+		},
+		'rightclick': function (point) {
+			console.info(point);
+			this.R.resetZoom();
+		},
+		'mousewheel': function (point, delta) {
+			this.R.zoom(delta>0);
+		},
+		'mousemove':function (point) {			
+			var zone = this.MF.getZone(point);
+			lastZoneSelected.debug = false;
+			zone.debug=true;
+			lastZoneSelected = zone;
+
+		}
+	}
+	
+
+	this.execute = function (command, args) {
+		if (commands[command]){
+			return commands[command].bind(self.app)(...args);
+		}else{
+			console.error(command,'non implementato', args)
+		}
+	}
+}
+
+module.exports = Commander;
+},{}],5:[function(require,module,exports){
 var jKstra = require('jkstra');
 
 var distance = function(a, b) {
@@ -491,7 +597,7 @@ var cellCentroid= function(cell) {
 }
 
 // Build graph data structure in 'edges', 'centers', 'corners',
-// based on information in the Voronoi results: point.neighbours
+// based on information in the Voronoi results: point.neighbors
 // will be a list of neighboring points of the same type (corner
 // or center); point.edges will be a list of edges that include
 // that point. Each edge connects to four points: the Voronoi edge
@@ -511,8 +617,8 @@ var buildGraph = function (diagram) {
 						let zone = new Zone();
 						zone.id = elem.voronoiId;
 						zone.index = elem.voronoiId;
-						zone.point = {x: elem.x, y: elem.y};
-						zone.neighbours = []; //[zones]
+						zone.point = {x: elem.x.toFixed(2), y: elem.y.toFixed(2)};
+						zone.neighbors = []; //[zones]
 						zone.borders = []; //[edges]
 						zone.corners = [];//[corners]
 						acc[elem.voronoiId] = zone;
@@ -527,7 +633,7 @@ var buildGraph = function (diagram) {
 		let vid = (v.x).toFixed(2)+'-'+(v.y).toFixed(2);
 		c.id= vid;
         c.index= vid,      
-        c.point= {x:v.x, y:v.y};  // location 
+        c.point= {x:v.x.toFixed(2), y:v.y.toFixed(2)};  // location 
         return c;
 	}
 	vEdges.map(function (vEdge) {
@@ -553,12 +659,12 @@ var buildGraph = function (diagram) {
 	        edge.river= 0;  // volume of water, or 0			
 	        edgesMap[z0.id][z1.id] = edge;
 
-			z0.neighbours.push(z1);
+			z0.neighbors.push(z1);
 			z0.corners.push(c0);
 			z0.corners.push(c1);
 			z0.borders.push(edgesMap[z0.id][z1.id]);
 			
-			z1.neighbours.push(z0);
+			z1.neighbors.push(z0);
 			z1.corners.push(c0);
 			z1.corners.push(c1);
 			z1.borders.push(edgesMap[z0.id][z1.id]);
@@ -619,7 +725,7 @@ var buildGraph = function (diagram) {
 	});
 	Object.keys(zonesMap).map(function(key){
 		var zone = zonesMap[key];
-		zone.neighbours.map(function(neigh){
+		zone.neighbors.map(function(neigh){
 			var commonBorder = (edgesMap[zone.id]||{})[neigh.id]||(edgesMap[neigh.id]||{})[zone.id];
 			/*GRAPH ZONES - edges*/
 			var gEdge0 = graphZ.addEdge(zone.gZvertex, neigh.gZvertex,commonBorder);
@@ -647,7 +753,6 @@ var  toInt = function (something) {
 };
 
 var Noise = require('noisejs').Noise;
-var noise = new Noise(Math.random());
 var distanceFromCenter= function (p,w,h) {
 		var c = {x: w/2, y: h/2};
         return Math.sqrt(((c.x-p.x) * (c.x-p.x)) + ((c.y-p.y) * (c.y-p.y)));
@@ -655,19 +760,35 @@ var distanceFromCenter= function (p,w,h) {
 var map = function (val, interval_dest, interval_source) {
 	return (val - interval_source[0])*(interval_dest[1]-interval_dest[0])/(interval_source[1]-interval_source[0]) + interval_dest[0];
 }
-var makePerlin = function(W,H){	
 
+var noise = new Noise(Math.random());
+var makePerlin = function(W,H,seed){	
     return function (q) {
     	//console.log(noise.perlin2(q.x / 100, q.y / 100))
+    	var water_modify = -0;
     	var min_distance = 0;
     	var max_distance = distanceFromCenter({x:0,y:0},W,H);
     	var this_distance = distanceFromCenter(q,W,H);
-    	var water_prob = map(this_distance,[-1,1],[min_distance,max_distance]);
-    	var perlin = noise.perlin2(q.x , q.y );
-    	return perlin + (water_prob/2) >0 ;
+    	var water_prob = map(this_distance,[-0,1.3],[min_distance,max_distance]);
+    	var perlin = noise.perlin2((q.x/60) , (q.y/60)) ;
+    	//return ((perlin) + (water_prob )  + water_modify)> - 0 ;
+    	console.log(q.x , q.y, perlin)
+    	return water_prob+perlin>0.4;
     };
 }
-
+var getZone = function (point, zonesMap) {
+	var retZone = undefined;
+	var lessDistance = Number.MAX_SAFE_INTEGER;
+	Object.keys(zonesMap).map(function(key){
+		var zone = zonesMap[key];
+		var d = distance(point, zone.point);
+		if (d < lessDistance){
+			lessDistance = d;
+			retZone = zone;
+		}
+	});
+	return retZone;
+}
 
 var VorUtils = {
 	distance: distance,
@@ -675,9 +796,10 @@ var VorUtils = {
 	cellCentroid: cellCentroid,
 	buildGraph: buildGraph,
 	makePerlin: makePerlin,
+	getZone: getZone,
 }
 module.exports = VorUtils;
-},{"../struct/center":7,"../struct/corner":8,"../struct/edge":9,"jkstra":18,"noisejs":20}],5:[function(require,module,exports){
+},{"../struct/center":8,"../struct/corner":9,"../struct/edge":10,"jkstra":19,"noisejs":21}],6:[function(require,module,exports){
 /*!
 Copyright (C) 2010-2013 Raymond Hill: https://github.com/gorhill/Javascript-Voronoi
 MIT License: See https://github.com/gorhill/Javascript-Voronoi/LICENSE.md
@@ -2402,22 +2524,30 @@ Voronoi.prototype.compute = function(sites, bbox) {
 if ( typeof module !== 'undefined' ) {
     module.exports = Voronoi;
 }
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
+
 var Renderer = function (opts) {
 	var canvas = document.getElementById(opts.canvas);
 	canvas.width  = opts.width; // in pixels
 	canvas.height = opts.height; // in pixels
 
+	var resetCtx = function (ctx) {
+		ctx.beginPath();
+		ctx.fillStyle = 'black';
+		ctx.strokeStyle = '#767';
+		ctx.lineWidth=1;
+	}
+
 	var drawBack = function (ctx) {		
 		ctx.beginPath();
 		ctx.rect(0,0,canvas.width,canvas.height);
-		ctx.fillStyle = 'white';
+		ctx.fillStyle = 'black';
 		ctx.fill();
-		ctx.strokeStyle = '#888';
+		ctx.strokeStyle = '#767';
 		ctx.stroke();
 	}
 	var drawSites = function (ctx, sites) {
-		ctx.beginPath();
+		resetCtx(ctx);
 		ctx.fillStyle = '#44f';
 		var iSite = sites.length;
 		while (iSite--) {
@@ -2427,7 +2557,7 @@ var Renderer = function (opts) {
 		ctx.fill();
 	}
 	var drawVertex = function (ctx, sites) {
-		ctx.beginPath();
+		resetCtx(ctx);
 		ctx.fillStyle = '#f00';
 		var iSite = sites.length;
 		while (iSite--) {
@@ -2437,8 +2567,8 @@ var Renderer = function (opts) {
 		ctx.fill();
 	}
 	var drawEdges = function (ctx, edges) {
-		ctx.beginPath();
-		ctx.strokeStyle = '#000';
+		resetCtx(ctx);
+		ctx.strokeStyle = '#888';
 		var	iEdge = edges.length,
 			edge, v;
 		while (iEdge--) {
@@ -2453,7 +2583,7 @@ var Renderer = function (opts) {
 	}
 	var drawBorders = function (ctx, borderMap) {
 
-		ctx.beginPath();
+		resetCtx(ctx);
 		ctx.strokeStyle = '#0FF';
 
 		Object.keys(borderMap).map(function(key){
@@ -2471,26 +2601,35 @@ var Renderer = function (opts) {
 	/*ZONES*/
 
 	var drawZoneCenter = function (ctx, zone) {
-		ctx.beginPath();
-		ctx.fillStyle = '#f00';
+		resetCtx(ctx);
+		//if (!zone.debug){return}
+		ctx.fillStyle = '#000';
 		let v = zone.point;
-		ctx.rect(v.x-2/3,v.y-2/3,2,2);
+		ctx.rect(v.x-2,v.y-2,2,2);
 		ctx.fill();
+		
 	}
 
 	var drawZoneName = function(ctx, zone){
+		resetCtx(ctx);
+		if (!zone.debug){return}
 		if (zone.water){
 			ctx.fillStyle = '#fff';
 		}else{
 			ctx.fillStyle = '#fff';
 		}
-		ctx.font="13px Verdana";
-		ctx.fillText(zone.tipo+' '+zone.id, zone.point.x - 13,zone.point.y +10);
-		if (zone.water){
+		ctx.font="12px Arial";
+		
+		
+		var x = parseInt(zone.point.x) - 10;
+		var y = parseInt(zone.point.y) + 15;
+		ctx.fillText('z'+zone.id, x,y );
+		//ctx.fill();
+		/*if (zone.water){
 			ctx.font="10px Verdana";
 			ctx.fillText('water', zone.point.x - 13,zone.point.y +20);	
-		}		
-		//ctx.fill();
+		}*/		
+		resetCtx(ctx);
 	}
 	var drawZoneColor = function (ctx, zone) {
 		//console.log(zone);	
@@ -2499,7 +2638,7 @@ var Renderer = function (opts) {
 
 
 		var isTheSame = function (p1,p2) {
-			return (p1.x==p2.x && p1.y==p2.y);
+			return (parseFloat(p1.x).toFixed(2)==parseFloat(p2.x).toFixed(2) && parseFloat(p1.y).toFixed(2)==parseFloat(p2.y).toFixed(2));
 		}
 		var nextBorder = function (b, borders) {
 			for (var i = 0; i < borders.length; i++) {
@@ -2524,77 +2663,98 @@ var Renderer = function (opts) {
 		points.push(border.v1.point);
 		for (var i = 1; i < zone.borders.length; i++) {
 			if (border){
+				var old_border = border;
 				border = nextBorder(border, zone.borders);
 				if (border){
 					points.push(border.v1.point);	
 				}else{
+					console.table(points)
 					console.log('nessun next border')
+					console.table(border)					
+					console.table(zone.borders)
 					break;
 				}				
 			}else{
 				console.log('nessun next border')
-				break;
+				
+				//break;
 			}
 		}
-		
-
-		
-
-
-
-		ctx.fillStyle = zone.water ? '#44f' : '#4fg';
-		ctx.beginPath();
+		resetCtx(ctx);
+		ctx.lineWidth=0.1
+		ctx.strokeStyle = zone.water ? 'rgba(60,90,255,0.7)' : 'rgba(60,255,60,0.7)';
+		ctx.fillStyle = zone.water ? 'rgba(60,90,255,0.7)' : 'rgba(60,255,60,0.7)';
 		ctx.moveTo(points[0].x,points[0].y)
 		points.map(function (p) {
 			ctx.lineTo(p.x, p.y);
 		})
 		ctx.lineTo(points[0].x,points[0].y)
+			
 		ctx.closePath();
+		ctx.stroke();
 		ctx.fill();
 	}
 
-	var drawZones = function (ctx, zones) {
+	var drawZones = function (camera, ctx, zones) {
 		
 		Object.keys(zones).map(function(key){
 			var zone = zones[key];
-			//console.log(zone)
-			drawZoneCenter(ctx,zone);
-			drawZoneColor(ctx,zone);
+			drawZoneColor(ctx,zone);			
+		})
+		Object.keys(zones).map(function(key){
+			var zone = zones[key];	
+			drawZoneCenter(ctx,zone);			
 			drawZoneName(ctx,zone);			
 		})
-		/*ctx.beginPath();
-		ctx.strokeStyle = '#0FF';
-		ctx.moveTo(v0.x,v0.y);
-		ctx.lineTo(v1.x,v1.y);
-		ctx.stroke();		
-		*/
+		
 	}
 
+	var _z= 1;
+	var view = {		
+		zoom: _z,
+		center: {
+			x: canvas.width/2,
+			y: canvas.height/2
+		}
+	}
+
+	this.resetZoom = function () {
+		view.zoom = 1/_z;
+		_z=1;
+	}
+	this.zoom = function (zoomIn) {
+		if(zoomIn){
+			view.zoom = 1.1;
+			_z = _z*1.1;			
+		}else{
+			view.zoom = 0.9;
+			_z = _z*0.9;
+		}
+		console.log('zoom level',_z )
+	}
+
+	var xView =0;
+	var yView =0;
 
 	this.render = function (map) {	
 		var ctx = canvas.getContext('2d');
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		ctx.globalAlpha = 1;
-		drawBack(ctx);
-		/*if (map && map.sites){
-			drawSites(ctx, map.sites);			
-		}*/
-		if (map && map.edges){
-			drawEdges(ctx, map.edges)
-		}
-		/*
-		if (map && map.graph  && map.graph.borderMap){
-			drawBorders(ctx,map.graph.borderMap);
-		}
-		*/
+		/*START DRAWING*/
+		drawBack(ctx);		
 		if (map && map.graph && map.graph.zonesMap){
-			drawZones(ctx,map.graph.zonesMap);
+			drawZones(view,ctx,map.graph.zonesMap);
 		}
-
+		ctx.scale(view.zoom,view.zoom)
+		view.zoom = 1;
+		this.image = new Image();
+		this.image.src = ctx.canvas.toDataURL("image/png");	
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		ctx.drawImage(this.image, 0, 0, this.image.width*view.zoom, this.image.height*view.zoom, -xView*view.zoom, -yView*view.zoom, this.image.width*view.zoom, this.image.height*view.zoom);
 	}
 }
 module.exports = Renderer;
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 'use strict';
 
 module.exports = function () {
@@ -2616,7 +2776,7 @@ module.exports = function () {
         corners: [],       // Vector<Corner>
     };
 };
-},{}],8:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 /* jshint 
     browser: true, jquery: true, node: true,
     bitwise: true, camelcase: true, curly: true, eqeqeq: true, es3: true, evil: true, expr: true, forin: true, immed: true, indent: 4, latedef: true, newcap: true, noarg: true, noempty: true, nonew: true, quotmark: single, regexdash: true, strict: true, sub: true, trailing: true, undef: true, unused: vars, white: true
@@ -2647,7 +2807,7 @@ module.exports = function () {
         watershedSize: null
     };
 };
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 /* jshint 
     browser: true, jquery: true, node: true,
     bitwise: true, camelcase: true, curly: true, eqeqeq: true, es3: true, evil: true, expr: true, forin: true, immed: true, indent: 4, latedef: true, newcap: true, noarg: true, noempty: true, nonew: true, quotmark: single, regexdash: true, strict: true, sub: true, trailing: true, undef: true, unused: vars, white: true
@@ -2668,7 +2828,7 @@ module.exports = function () {
         river: 0  // volume of water, or 0
     };
 };
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -2742,7 +2902,7 @@ function BFS(graph, opts) {
 exports.default = BFS;
 module.exports = exports['default'];
 
-},{"../core/constants.js":16}],11:[function(require,module,exports){
+},{"../core/constants.js":17}],12:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -2842,7 +3002,7 @@ var BidirectionalDijkstra = function () {
 exports.default = BidirectionalDijkstra;
 module.exports = exports['default'];
 
-},{"../algos/DijkstraIterator.js":13,"../core/constants.js":16,"./nodeFlagger.js":14}],12:[function(require,module,exports){
+},{"../algos/DijkstraIterator.js":14,"../core/constants.js":17,"./nodeFlagger.js":15}],13:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -2942,7 +3102,7 @@ Dijkstra.defaultTraversalOptions = {
 exports.default = Dijkstra;
 module.exports = exports['default'];
 
-},{"../algos/DijkstraIterator.js":13,"../core/constants.js":16,"./nodeFlagger.js":14}],13:[function(require,module,exports){
+},{"../algos/DijkstraIterator.js":14,"../core/constants.js":17,"./nodeFlagger.js":15}],14:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -3102,7 +3262,7 @@ DijkstraIterator.defaultOptions = {
 exports.default = DijkstraIterator;
 module.exports = exports['default'];
 
-},{"../core/constants.js":16,"./nodeFlagger.js":14,"updatable-priority-queue":23}],14:[function(require,module,exports){
+},{"../core/constants.js":17,"./nodeFlagger.js":15,"updatable-priority-queue":24}],15:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -3153,7 +3313,7 @@ var _class = function () {
 exports.default = _class;
 module.exports = exports['default'];
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -3326,7 +3486,7 @@ var Graph = function () {
 exports.default = Graph;
 module.exports = exports['default'];
 
-},{"./constants.js":16,"./utils.js":17}],16:[function(require,module,exports){
+},{"./constants.js":17,"./utils.js":18}],17:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -3337,7 +3497,7 @@ var IN = exports.IN = false;
 var REACHED = exports.REACHED = 1;
 var SETTLED = exports.SETTLED = 2;
 
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -3374,7 +3534,7 @@ function propsMatch(set, subSet) {
     return true;
 };
 
-},{}],18:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -3420,7 +3580,7 @@ var jKstra = {
 exports.default = jKstra;
 module.exports = exports['default'];
 
-},{"./algos/BFS.js":10,"./algos/BidirectionalDijkstra.js":11,"./algos/Dijkstra.js":12,"./algos/DijkstraIterator.js":13,"./core/Graph.js":15,"./core/constants.js":16}],19:[function(require,module,exports){
+},{"./algos/BFS.js":11,"./algos/BidirectionalDijkstra.js":12,"./algos/Dijkstra.js":13,"./algos/DijkstraIterator.js":14,"./core/Graph.js":16,"./core/constants.js":17}],20:[function(require,module,exports){
 (function (global){
 /**
  * @license
@@ -20508,7 +20668,7 @@ module.exports = exports['default'];
 }.call(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],20:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 /*
  * A speed-improved perlin and simplex noise algorithms for 2D.
  *
@@ -20837,7 +20997,7 @@ module.exports = exports['default'];
 
 })(typeof module === "undefined" ? this : module.exports);
 
-},{}],21:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 (function (process){
 // Generated by CoffeeScript 1.7.1
 (function() {
@@ -20873,7 +21033,7 @@ module.exports = exports['default'];
 }).call(this);
 
 }).call(this,require('_process'))
-},{"_process":1}],22:[function(require,module,exports){
+},{"_process":1}],23:[function(require,module,exports){
 (function (global){
 var now = require('performance-now')
   , root = typeof window === 'undefined' ? global : window
@@ -20949,7 +21109,7 @@ module.exports.polyfill = function() {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"performance-now":21}],23:[function(require,module,exports){
+},{"performance-now":22}],24:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
