@@ -67,7 +67,7 @@ MapFactory.prototype.generatePoints = function(add) {
 };
 MapFactory.prototype.assignWater = function(){
 	var self = this;
-	var pValue = VU.makePerlin(this.getOpts().width, this.getOpts().height, 111);
+	var pValue = VU.makePerlin(this.getOpts().width, this.getOpts().height, 'scimmia');
 	var inside = function (p) {
         return pValue({ x: 2 * (p.x / this.getOpts().width - 0.5), y: 2 * (p.y / this.getOpts().height - 0.5) });
     };

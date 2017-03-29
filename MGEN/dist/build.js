@@ -250,7 +250,7 @@ MapFactory.prototype.generatePoints = function(add) {
 };
 MapFactory.prototype.assignWater = function(){
 	var self = this;
-	var pValue = VU.makePerlin(this.getOpts().width, this.getOpts().height, 111);
+	var pValue = VU.makePerlin(this.getOpts().width, this.getOpts().height, 'scimmia');
 	var inside = function (p) {
         return pValue({ x: 2 * (p.x / this.getOpts().width - 0.5), y: 2 * (p.y / this.getOpts().height - 0.5) });
     };
@@ -761,19 +761,20 @@ var map = function (val, interval_dest, interval_source) {
 	return (val - interval_source[0])*(interval_dest[1]-interval_dest[0])/(interval_source[1]-interval_source[0]) + interval_dest[0];
 }
 
-var noise = new Noise(Math.random());
+
 var makePerlin = function(W,H,seed){	
+	var noise = new Noise(seed || Math.random());
     return function (q) {
     	//console.log(noise.perlin2(q.x / 100, q.y / 100))
     	var water_modify = -0;
     	var min_distance = 0;
     	var max_distance = distanceFromCenter({x:0,y:0},W,H);
     	var this_distance = distanceFromCenter(q,W,H);
-    	var water_prob = map(this_distance,[-0,1.3],[min_distance,max_distance]);
+    	var water_prob = map(this_distance,[-1,2],[min_distance,max_distance]);
     	var perlin = noise.perlin2((q.x/60) , (q.y/60)) ;
     	//return ((perlin) + (water_prob )  + water_modify)> - 0 ;
     	console.log(q.x , q.y, perlin)
-    	return water_prob+perlin>0.4;
+    	return water_prob + (perlin*1.5)>0.0;
     };
 }
 var getZone = function (point, zonesMap) {
