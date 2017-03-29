@@ -230,6 +230,8 @@ MapFactory.prototype.getBBox = function() {
 	return {xl:0,xr:this.getOpts().width,yt:0,yb:this.getOpts().width};
 };
 
+
+
 MapFactory.prototype.generatePoints = function(add) {
 	add = add || false;
 	var n = this.getOpts().sites;
@@ -266,6 +268,35 @@ MapFactory.prototype.assignWater = function(){
 }
 MapFactory.prototype.assignOceans = function(){
 	var self = this;
+	var zone0 = this.getZone({x:0, y:0});
+	zone0.ocean=true;
+	var checks = 0;
+	var done = {};
+	var zm = this.map.graph.zonesMap;
+	var flood = function flood(zoneId){
+		checks++;
+		if (!done[zoneId]){
+			done[zoneId] = true;
+			if(zm[zoneId].water){			
+				zm[zoneId].ocean = true;
+				//console.log('zone', zone.id, 'is ocean');
+				setTimeout(function() {
+					zm[zoneId].neighbors
+						.filter(function(n){return !done[n.id] /*&& n.ocean===null && n.water===true;*/})
+						.map(function(n){flood(n.id);})
+				}, 0.00001);
+			}else{
+				console.log('zone', zoneId, 'is coast');
+				zm[zoneId].ocean = false;
+				zm[zoneId].coast = true;
+			}
+		}
+	}	
+	flood(zone0.id);
+	console.log('flooded',checks)
+	/*
+
+
     Object.keys(this.map.graph.zonesMap)
     	.filter(function (key) {return self.map.graph.zonesMap[key].water;}) //filtro quelle con l'acqua
     	.map(function(key){
@@ -279,6 +310,7 @@ MapFactory.prototype.assignOceans = function(){
 	});
 	
 	console.log(this.map.graph.zGraph)
+	*/
 }
 MapFactory.prototype.voronoiPass = function() {
 	var self = this;
@@ -288,7 +320,7 @@ MapFactory.prototype.voronoiPass = function() {
 	this.updateMap();
 	this.updateGraph(); //build this.map.graph zonesMap
 	this.assignWater(); //
-	this.assignOceans(); //
+	//this.assignOceans(); //
 
 	//this.printZones();
 };
@@ -420,7 +452,7 @@ var CanvasRenderer = require('./renderers/CanvasRenderer')
 var raf = require('raf');
 var WIDTH = 1024,
 HEIGHT = 768,
-ZONES = 2500;
+ZONES = 150;
 
 var App = function App() {
 	var self = this;
@@ -453,6 +485,10 @@ var App = function App() {
 		document.getElementById('btn_rel').onclick = function () {
 			console.log('rilasso voronoi');
 			self.MF.relaxPass();
+		};
+		document.getElementById('btn_oceans').onclick = function () {
+			console.log('!!Slow!! oceans');
+			self.MF.assignOceans();
 		};
 		function getMousePos(canvas, evt) {
 	        var rect = canvas.getBoundingClientRect();
@@ -773,7 +809,7 @@ var makePerlin = function(W,H,seed){
     	var water_prob = map(this_distance,[-1,2],[min_distance,max_distance]);
     	var perlin = noise.perlin2((q.x/60) , (q.y/60)) ;
     	//return ((perlin) + (water_prob )  + water_modify)> - 0 ;
-    	console.log(q.x , q.y, perlin)
+    	//console.log(q.x , q.y, perlin)
     	return water_prob + (perlin*1.5)>0.0;
     };
 }
@@ -2683,8 +2719,20 @@ var Renderer = function (opts) {
 		}
 		resetCtx(ctx);
 		ctx.lineWidth=0.1
-		ctx.strokeStyle = zone.water ? 'rgba(60,90,255,0.7)' : 'rgba(60,255,60,0.7)';
-		ctx.fillStyle = zone.water ? 'rgba(60,90,255,0.7)' : 'rgba(60,255,60,0.7)';
+		var colors= {
+			'ocean': 'rgba(120,120,255,0.7)',
+			'water': 'rgba(30,70,210,0.7)',
+			'land': 'rgba(60,255,60,0.7)',
+			'black': 'rgba(0,0,0,1)'
+		}
+		var getColor = function(z){
+			if (z.ocean) return colors['ocean'];
+			if (z.water) return colors['water'];
+			return colors['land'];
+
+		}
+		ctx.strokeStyle = getColor(zone);
+		ctx.fillStyle = getColor(zone);
 		ctx.moveTo(points[0].x,points[0].y)
 		points.map(function (p) {
 			ctx.lineTo(p.x, p.y);
@@ -2764,10 +2812,10 @@ module.exports = function () {
         id: null,
         tipo:'zona',
         point: null,        // Point location
-        water: false,        // lake or ocean
-        ocean: false,        // ocean
-        coast: false,        // land polygon touching an ocean
-        border: false,       // at the edge of the map
+        water: null,        // lake or ocean
+        ocean: null,        // ocean
+        coast: null,        // land polygon touching an ocean
+        border: null,       // at the edge of the map
         biome: null,          // biome type (see article)
         elevation: null,     // 0.0-1.0
         moisture: null,      // 0.0-1.0

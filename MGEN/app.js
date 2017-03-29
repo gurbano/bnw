@@ -4,7 +4,7 @@ var CanvasRenderer = require('./renderers/CanvasRenderer')
 var raf = require('raf');
 var WIDTH = 1024,
 HEIGHT = 768,
-ZONES = 2500;
+ZONES = 150;
 
 var App = function App() {
 	var self = this;
@@ -37,6 +37,10 @@ var App = function App() {
 		document.getElementById('btn_rel').onclick = function () {
 			console.log('rilasso voronoi');
 			self.MF.relaxPass();
+		};
+		document.getElementById('btn_oceans').onclick = function () {
+			console.log('!!Slow!! oceans');
+			self.MF.assignOceans();
 		};
 		function getMousePos(canvas, evt) {
 	        var rect = canvas.getBoundingClientRect();

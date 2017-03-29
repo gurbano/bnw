@@ -216,7 +216,7 @@ var makePerlin = function(W,H,seed){
     	var water_prob = map(this_distance,[-1,2],[min_distance,max_distance]);
     	var perlin = noise.perlin2((q.x/60) , (q.y/60)) ;
     	//return ((perlin) + (water_prob )  + water_modify)> - 0 ;
-    	console.log(q.x , q.y, perlin)
+    	//console.log(q.x , q.y, perlin)
     	return water_prob + (perlin*1.5)>0.0;
     };
 }

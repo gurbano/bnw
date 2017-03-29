@@ -47,6 +47,8 @@ MapFactory.prototype.getBBox = function() {
 	return {xl:0,xr:this.getOpts().width,yt:0,yb:this.getOpts().width};
 };
 
+
+
 MapFactory.prototype.generatePoints = function(add) {
 	add = add || false;
 	var n = this.getOpts().sites;
@@ -83,6 +85,35 @@ MapFactory.prototype.assignWater = function(){
 }
 MapFactory.prototype.assignOceans = function(){
 	var self = this;
+	var zone0 = this.getZone({x:0, y:0});
+	zone0.ocean=true;
+	var checks = 0;
+	var done = {};
+	var zm = this.map.graph.zonesMap;
+	var flood = function flood(zoneId){
+		checks++;
+		if (!done[zoneId]){
+			done[zoneId] = true;
+			if(zm[zoneId].water){			
+				zm[zoneId].ocean = true;
+				//console.log('zone', zone.id, 'is ocean');
+				setTimeout(function() {
+					zm[zoneId].neighbors
+						.filter(function(n){return !done[n.id] /*&& n.ocean===null && n.water===true;*/})
+						.map(function(n){flood(n.id);})
+				}, 0.00001);
+			}else{
+				console.log('zone', zoneId, 'is coast');
+				zm[zoneId].ocean = false;
+				zm[zoneId].coast = true;
+			}
+		}
+	}	
+	flood(zone0.id);
+	console.log('flooded',checks)
+	/*
+
+
     Object.keys(this.map.graph.zonesMap)
     	.filter(function (key) {return self.map.graph.zonesMap[key].water;}) //filtro quelle con l'acqua
     	.map(function(key){
@@ -96,6 +127,7 @@ MapFactory.prototype.assignOceans = function(){
 	});
 	
 	console.log(this.map.graph.zGraph)
+	*/
 }
 MapFactory.prototype.voronoiPass = function() {
 	var self = this;
@@ -105,7 +137,7 @@ MapFactory.prototype.voronoiPass = function() {
 	this.updateMap();
 	this.updateGraph(); //build this.map.graph zonesMap
 	this.assignWater(); //
-	this.assignOceans(); //
+	//this.assignOceans(); //
 
 	//this.printZones();
 };

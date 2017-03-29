@@ -155,8 +155,20 @@ var Renderer = function (opts) {
 		}
 		resetCtx(ctx);
 		ctx.lineWidth=0.1
-		ctx.strokeStyle = zone.water ? 'rgba(60,90,255,0.7)' : 'rgba(60,255,60,0.7)';
-		ctx.fillStyle = zone.water ? 'rgba(60,90,255,0.7)' : 'rgba(60,255,60,0.7)';
+		var colors= {
+			'ocean': 'rgba(120,120,255,0.7)',
+			'water': 'rgba(30,70,210,0.7)',
+			'land': 'rgba(60,255,60,0.7)',
+			'black': 'rgba(0,0,0,1)'
+		}
+		var getColor = function(z){
+			if (z.ocean) return colors['ocean'];
+			if (z.water) return colors['water'];
+			return colors['land'];
+
+		}
+		ctx.strokeStyle = getColor(zone);
+		ctx.fillStyle = getColor(zone);
 		ctx.moveTo(points[0].x,points[0].y)
 		points.map(function (p) {
 			ctx.lineTo(p.x, p.y);
